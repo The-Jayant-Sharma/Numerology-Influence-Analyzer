@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Numerology Influence Analyzer — Final</title>
+
+  <!-- Chart.js, html2canvas, jsPDF -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#ffffff; --ink:#0b0b0b; --muted:#6b7280; --card-border:#f3f4f6; --accent:#000;
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,'Roboto Mono',monospace}
+    .page{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;box-sizing:border-box}
+    .panel{width:100%;max-width:980px;border-radius:14px;background:var(--bg);padding:26px;box-sizing:border-box;box-shadow:0 20px 40px rgba(11,11,11,0.04)}
+    header{text-align:center;margin-bottom:10px}
+    h1{margin:0;font-size:22px;font-weight:700}
+    .lead{color:var(--muted);font-size:13px;margin-top:6px}
+
+    .controls{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin:18px 0}
+    .inputs{display:flex;flex-direction:column;gap:10px;width:64%;min-width:220px}
+    .input-row{display:flex;gap:8px;align-items:center}
+    input.num{flex:1;padding:12px 14px;border-radius:10px;border:1px solid var(--card-border);text-align:center;font-family:inherit;font-size:14px;background:transparent}
+    input::placeholder{color:#9ca3af}
+    input.num:-webkit-autofill, input.num:-webkit-autofill:hover, input.num:-webkit-autofill:focus {
+      -webkit-box-shadow: 0 0 0px 1000px var(--bg) inset !important;
+    }
+    input.num:focus, select:focus, button:focus, textarea:focus { outline:none; box-shadow:0 8px 24px rgba(0,0,0,0.04); border-color:#e6e7eb; }
+
+    .controls-side{display:flex;flex-direction:column;gap:8px;align-items:center}
+    button{padding:10px 14px;border-radius:999px;border:0;background:var(--accent);color:#fff;cursor:pointer;font-weight:700;font-family:inherit;box-shadow:0 10px 24px rgba(0,0,0,0.06)}
+    button.secondary{background:#444;padding:8px 12px;border-radius:10px}
+    select#mode{width:150px;padding:8px 10px;border-radius:10px;border:1px solid var(--card-border);background:#fff}
+
+    .removeBtn{background:#ef476f;border-radius:10px;padding:8px 10px;font-weight:700;color:#fff;border:0}
+    .downloadBtn{background:#1b5cf6}
+
+    .results{margin-top:18px;display:flex;flex-direction:column;gap:14px;align-items:center}
+    .card{width:100%;background:var(--bg);border-radius:12px;padding:14px;border:1px solid var(--card-border);box-sizing:border-box}
+    table{width:100%;border-collapse:collapse;font-family:inherit;font-size:14px}
+    thead th{font-weight:700;text-align:left;padding:8px 10px;color:var(--muted)}
+    tbody td{padding:8px 10px;border-top:1px solid #f2f4f6;text-align:center}
+    .monospace{font-family:inherit}
+
+    .stage{border-radius:10px;overflow:hidden;border:1px solid #f1f3f5;background:#fff;margin-bottom:10px}
+    .stage-header{display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer}
+    .stage-title{font-weight:700}
+    .stage-hint{color:var(--muted);font-size:13px}
+    .stage-content{max-height:0;overflow:hidden;padding:0 12px;transition:max-height 380ms cubic-bezier(.2,.9,.2,1),padding 380ms}
+    .stage.open .stage-content{max-height:640px;padding:12px}
+
+    .chart-wrap{display:flex;align-items:center;justify-content:center;padding:6px 0}
+    canvas.pie{max-width:300px;width:70%;height:auto;display:block;margin:0 auto}
+
+    @media(max-width:900px){ .controls{flex-direction:column;align-items:stretch} .inputs{width:100%} }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <main class="panel" aria-live="polite">
+      <header>
+        <h1>Numerology Influence Analyzer</h1>
+        <div class="lead">Examples: <code>&lt;(1)(1)(1)(1)&gt;</code> • <code>&lt;(1,1,1,1)&gt;</code> • <code>&lt;(2008)&gt;</code></div>
+      </header>
+
+      <div class="controls">
+        <div class="inputs" id="inputsWrap">
+          <div class="input-row">
+            <input class="num" placeholder="&lt;(1)(1)(1)(1)&gt;" value="&lt;(2, 1, 3, 5)&gt;">
+            <button type="button" class="removeBtn" aria-label="remove">Remove</button>
+          </div>
+        </div>
+
+        <div class="controls-side">
+          <button type="button" id="addBtn" class="secondary">Add input</button>
+          <select id="mode">
+            <option value="reversed">Reversed (k₁ = n)</option>
+            <option value="normal">Normal (k₁ = 1)</option>
+            <option value="neutral">Neutral (sum-of-fractions)</option>
+          </select>
+          <div style="display:flex;gap:8px">
+            <button type="button" id="analyzeBtn">Analyze All</button>
+            <button type="button" id="downloadBtn" class="downloadBtn" style="display:none">Download PDF</button>
+          </div>
+        </div>
+      </div>
+
+      <section id="results" class="results" style="display:none"></section>
+    </main>
+  </div>
+
+<!-- ===========================
+     SCRIPT BLOCK 1 — Core app
+     (parsing, algorithm, UI, rendering per-input & stages)
+     =========================== -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const COLORS = ['#1b1f3b','#2d70ff','#00a896','#9b5de5','#ff7eb6','#ffb703','#8ac926','#ef476f','#ffd166','#6a4c93'];
+  const inputsWrap = document.getElementById('inputsWrap');
+  const addBtn = document.getElementById('addBtn');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const modeEl = document.getElementById('mode');
+  const results = document.getElementById('results');
+
+  // Shared state for PDF block
+  window._numAnalyzerState = { lastAnalysisResults: [], lastAverageAgg: null, colors: COLORS };
+
+  /* ---------- Parser & algorithm ---------- */
+  function validateTokens(tokens){
+    for (const t of tokens){
+      if (!/^\d+$/.test(String(t))) throw new Error(`Invalid token "${t}". Only digits allowed.`);
+    }
+  }
+
+  function parseInput(text){
+    if (!text) return [];
+    let s = String(text).trim();
+    if (s.startsWith('<') && s.endsWith('>')) s = s.slice(1,-1).trim();
+    if (!s) return [];
+    const groupMatches = s.match(/\([^()]*\)/g);
+    if (!groupMatches){
+      const cleaned = s.replace(/\s+/g,'');
+      if (!cleaned) return [];
+      if (cleaned.includes(',')){
+        const parts = cleaned.split(',').map(x=>x.trim()).filter(Boolean);
+        validateTokens(parts);
+        return [parts.map(Number)];
+      }
+      const parts = cleaned.split('').map(ch=>ch.trim()).filter(Boolean);
+      validateTokens(parts);
+      return [parts.map(Number)];
+    }
+    const groups = [];
+    for (const g of groupMatches){
+      const inner = g.slice(1,-1).trim();
+      if (!inner){ groups.push([]); continue; }
+      let parts;
+      if (inner.includes(',')) parts = inner.split(',').map(x=>x.trim()).filter(Boolean);
+      else if (/^\d+$/.test(inner)) parts = inner.split('').map(ch=>ch);
+      else parts = inner.split(/\s+/).map(x=>x.trim()).filter(Boolean);
+      validateTokens(parts);
+      groups.push(parts.map(Number));
+    }
+    return groups.map(gr => Array.isArray(gr) ? gr.map(Number) : [Number(gr)]);
+  }
+
+  function sumDigitsOnceStr(str){
+    const digs = String(str).match(/\d/g) || [];
+    return String(digs.reduce((a,b)=>a+Number(b), 0));
+  }
+
+  function digitFractionFromList(list){
+    const counts = Array.from({length:10}, ()=>0);
+    let X = 0;
+    for (const item of list){
+      const digs = String(item).match(/\d/g) || [];
+      X += digs.length;
+      for (const d of digs) counts[Number(d)]++;
+    }
+    const fractions = counts.map(c => X===0 ? 0 : c / X);
+    return {X, counts, fractions, numbers: list.slice()};
+  }
+
+  function arraysEqual(a,b){
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    if (a.length !== b.length) return false;
+    for (let i=0;i<a.length;i++) if (String(a[i]) !== String(b[i])) return false;
+    return true;
+  }
+
+  function buildStages(initialGroups){
+    const stages = [];
+
+    // Phase A: subgroups cascade
+    let gA = initialGroups.map(g => ({ subgroups: (g.subgroups||[]).map(s=>String(s)) }));
+    while(true){
+      const flat = gA.flatMap(g=>g.subgroups);
+      stages.push({ type:'subgroups', payload: JSON.parse(JSON.stringify(gA)), result: digitFractionFromList(flat) });
+      const allSingle = gA.every(g => g.subgroups.every(s => (s.match(/\d/g)||[]).length === 1));
+      if (allSingle) break;
+      gA = gA.map(g=>({ subgroups: g.subgroups.map(s => sumDigitsOnceStr(s)) }));
+    }
+
+    // Phase B: groups
+    let gB = gA.map(g=>{
+      const ds = g.subgroups.map(s => (s.match(/\d/g)||[]).reduce((a,b)=>a+Number(b),0));
+      const sum = ds.reduce((a,b)=>a+b,0);
+      return { value: String(sum) };
+    });
+    while(true){
+      const flat = gB.map(g=>g.value);
+      stages.push({ type:'groups', payload: JSON.parse(JSON.stringify(gB)), result: digitFractionFromList(flat) });
+      const allSingle = gB.every(g => (g.value.match(/\d/g)||[]).length === 1);
+      if (allSingle) break;
+      gB = gB.map(g => ({ value: sumDigitsOnceStr(g.value) }));
+    }
+
+    // Phase C: system
+    const systemStart = (() => {
+      const nums = gB.map(g => (g.value.match(/\d/g)||[]).join('') || '0');
+      const dsums = nums.map(t => t.split('').reduce((a,b)=>a+Number(b),0));
+      const tot = dsums.reduce((a,b)=>a+b,0);
+      return [ String(tot) ];
+    })();
+
+    let sysNums = systemStart.slice();
+    while(true){
+      const lastNums = (stages.length>0 && stages[stages.length-1].result) ? stages[stages.length-1].result.numbers : null;
+      if (lastNums && arraysEqual(lastNums, sysNums)){
+        const allSingleNow = sysNums.every(s => (String(s).match(/\d/g)||[]).length === 1);
+        if (allSingleNow) break;
+        sysNums = sysNums.map(s => sumDigitsOnceStr(s));
+        continue;
+      }
+      stages.push({ type:'system', payload:{numbers: sysNums.slice()}, result: digitFractionFromList(sysNums) });
+      const allSingle = sysNums.every(s => (String(s).match(/\d/g)||[]).length === 1);
+      if (allSingle) break;
+      sysNums = sysNums.map(s => sumDigitsOnceStr(s));
+    }
+
+    return stages;
+  }
+
+  function aggregate(stages, mode='reversed'){
+    const per = Array.from({length:10}, ()=>0);
+    const n = Math.max(1, stages.length);
+    stages.forEach((st, idx)=>{
+      const fr = (st.result && Array.isArray(st.result.fractions)) ? st.result.fractions : Array.from({length:10}, ()=>0);
+      if (mode === 'neutral'){
+        for (let d=0; d<10; d++) per[d] += fr[d] || 0;
+      } else {
+        const w = (mode === 'normal') ? (idx+1) : (n - idx);
+        for (let d=0; d<10; d++) per[d] += w * (fr[d] || 0);
+      }
+    });
+    const total = per.reduce((a,b)=>a+b,0) || 1;
+    const percentages = per.map(v => v/total*100);
+    return { per, total, percentages };
+  }
+
+  /* ---------- Chart helper (exposed globally for second block) ---------- */
+  function makePie(canvas, numericArray){
+    if (typeof Chart === 'undefined') return null;
+    const data = Array.from({length:10}, (_,i) => Number(numericArray[i]) || 0);
+    const allZero = data.every(v => v === 0);
+    const dataset = allZero ? [1] : data;
+    const bg = allZero ? ['#e6e7eb'] : COLORS;
+    const labels = allZero ? ['empty'] : Array.from({length:10}, (_,i)=>String(i));
+    if (canvas._chart && typeof canvas._chart.destroy === 'function') {
+      try { canvas._chart.destroy(); } catch(e) {}
+    }
+    const ctx = canvas.getContext('2d');
+    canvas._chart = new Chart(ctx, {
+      type:'pie',
+      data: { labels, datasets: [{ data: dataset, backgroundColor: bg }] },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12 } },
+          tooltip: { enabled: true, callbacks: {
+            label(ctx){ if (allZero) return ''; const val = ctx.raw; const total = data.reduce((a,b)=>a+b,0)||1; const pct = (Number(val)/total*100).toFixed(3); return `${ctx.label}: ${val} (${pct}%)`; }
+          }}
+        },
+        maintainAspectRatio: false
+      }
+    });
+    return canvas._chart;
+  }
+
+  window._numAnalyzerMakePie = makePie;
+
+  /* ---------- UI helpers ---------- */
+  function updateRemoveVisibility(){
+    const rows = inputsWrap.querySelectorAll('.input-row');
+    rows.forEach(r => {
+      const btn = r.querySelector('.removeBtn');
+      if (btn) btn.style.display = (rows.length > 1) ? '' : 'none';
+    });
+  }
+
+  function createInputRow(initialValue = '') {
+    const row = document.createElement('div');
+    row.className = 'input-row';
+    const inp = document.createElement('input');
+    inp.className = 'num';
+    inp.placeholder = '<(1)(1)(1)(1)>';
+    inp.value = initialValue;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'removeBtn';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => {
+      if (row.parentNode) row.parentNode.removeChild(row);
+      updateRemoveVisibility();
+    });
+    row.appendChild(inp);
+    row.appendChild(remove);
+    return row;
+  }
+
+  // attach remove handlers to initial rows
+  Array.from(inputsWrap.querySelectorAll('.input-row')).forEach(row => {
+    const btn = row.querySelector('.removeBtn');
+    if (btn) btn.addEventListener('click', () => { if (row.parentNode) row.parentNode.removeChild(row); updateRemoveVisibility(); });
+  });
+  updateRemoveVisibility();
+
+  addBtn.addEventListener('click', () => {
+    const r = createInputRow('');
+    inputsWrap.appendChild(r);
+    updateRemoveVisibility();
+    const i = r.querySelector('input.num'); if (i) i.focus();
+  });
+
+  /* ---------- Rendering helpers for UI ---------- */
+  function escapeHtml(str){ return String(str).replace(/[&<>"']/g, (m)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  function createTableHTMLFromCounts(countsObj){
+    const counts = countsObj.counts || Array(10).fill(0);
+    const X = countsObj.X || 1;
+    let inner = '<div style="overflow-x:auto"><table><thead><tr><th>Digit</th><th>count</th><th>fraction</th></tr></thead><tbody>';
+    for (let d=0; d<10; d++){
+      const cnt = counts[d] || 0;
+      const fr = X === 0 ? 0 : cnt / X;
+      inner += `<tr><td class="monospace">${d}</td><td class="monospace">${cnt}</td><td class="monospace">${fr.toFixed(6)}</td></tr>`;
+    }
+    inner += '</tbody></table></div>';
+    return inner;
+  }
+
+  function renderPerInput(index, rawText, agg, stages){
+    const card = document.createElement('div'); card.className = 'card';
+    const modeName = modeEl.value === 'normal' ? 'Normal' : (modeEl.value === 'neutral' ? 'Neutral' : 'Reversed');
+    card.innerHTML = `<div style="font-weight:700;margin-bottom:8px">Input ${index+1} — ${escapeHtml(rawText) || '—'} (${modeName})</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Digit</th><th>Value</th><th>%</th></tr></thead><tbody>
+      ${Array.from({length:10}, (_,d)=>`<tr><td class="monospace">${d}</td><td class="monospace">${Number((agg.per||[])[d]||0).toFixed(6)}</td><td class="monospace">${Number((agg.percentages||[])[d]||0).toFixed(3)}%</td></tr>`).join('')}
+      </tbody></table></div>`;
+    results.appendChild(card);
+
+    const pieCard = document.createElement('div'); pieCard.className = 'card';
+    pieCard.innerHTML = `<div style="font-weight:700;margin-bottom:8px">Final Pie (Input ${index+1})</div><div class="chart-wrap"><canvas class="final-pie"></canvas></div>`;
+    results.appendChild(pieCard);
+    const finalCanvas = pieCard.querySelector('canvas.final-pie');
+    finalCanvas.width = 320; finalCanvas.height = 320;
+    makePie(finalCanvas, agg.percentages);
+
+    const stagesContainer = document.createElement('div'); stagesContainer.className = 'card';
+    stagesContainer.innerHTML = `<div style="font-weight:700;margin-bottom:8px">Stages (Input ${index+1})</div>`;
+    results.appendChild(stagesContainer);
+
+    stages.forEach((stg, sidx) => {
+      const stDiv = document.createElement('div'); stDiv.className = 'stage';
+      const header = document.createElement('div'); header.className = 'stage-header';
+      const titleText = `Stage ${sidx+1} — ${stg.type}`;
+      header.innerHTML = `<div class="stage-title">${titleText}</div><div class="stage-hint">numbers: <span class="monospace">${(stg.result.numbers||[]).join(', ') || '—'}</span></div>`;
+      const content = document.createElement('div'); content.className = 'stage-content';
+      const tblHTML = createTableHTMLFromCounts(stg.result);
+      const tblWrapper = document.createElement('div'); tblWrapper.innerHTML = tblHTML;
+      const smallPieWrap = document.createElement('div'); smallPieWrap.className = 'chart-wrap';
+      const smallCanvas = document.createElement('canvas'); smallCanvas.className = 'pie small-stage-pie'; smallCanvas.style.width='240px'; smallCanvas.style.height='240px';
+      smallPieWrap.appendChild(smallCanvas);
+      content.appendChild(tblWrapper); content.appendChild(smallPieWrap);
+      header.addEventListener('click', () => {
+        const open = stDiv.classList.toggle('open');
+        if (open) {
+          makePie(smallCanvas, stg.result.counts);
+        }
+      });
+      stDiv.appendChild(header); stDiv.appendChild(content);
+      stagesContainer.appendChild(stDiv);
+    });
+  }
+
+/* ---------- Main analyze and render ---------- */
+  function clearResults(){
+    document.querySelectorAll('canvas').forEach(c => {
+      try { if (c._chart && typeof c._chart.destroy === 'function') c._chart.destroy(); } catch(e){}
+    });
+    results.innerHTML = '';
+    results.style.display = 'none';
+    window._numAnalyzerState.lastAnalysisResults = [];
+    window._numAnalyzerState.lastAverageAgg = null;
+    downloadBtn.style.display = 'none';
+  }
+
+  function clearAllAndAnalyze(){
+    clearResults();
+    const rows = Array.from(inputsWrap.querySelectorAll('.input-row'));
+    const mode = modeEl.value || 'reversed';
+    const perInputAggs = [];
+
+    rows.forEach((r, idx) => {
+      const raw = (r.querySelector('input.num') || { value: '' }).value.trim();
+      let parsed;
+      try { parsed = parseInput(raw); } catch (err) {
+        const ecard = document.createElement('div'); ecard.className = 'card';
+        ecard.innerHTML = `<div style="font-weight:700">Input ${idx+1} — Error</div><div style="color:#b91c1c">${escapeHtml(err.message)}</div>`;
+        results.appendChild(ecard);
+        return;
+      }
+      if (!parsed || parsed.length === 0){
+        const ecard = document.createElement('div'); ecard.className = 'card';
+        ecard.innerHTML = `<div style="font-weight:700">Input ${idx+1}</div><div style="color:#b91c1c">No groups parsed</div>`;
+        results.appendChild(ecard);
+        return;
+      }
+
+      const initialGroups = parsed.map(arr => ({ subgroups: arr.map(n => String(n)) }));
+      const stages = buildStages(initialGroups);
+      const agg = aggregate(stages, mode);
+      perInputAggs.push(agg);
+      window._numAnalyzerState.lastAnalysisResults.push({ raw, agg });
+      renderPerInput(idx, raw, agg, stages);
+    });
+
+    if (perInputAggs.length > 0){
+      const avg = Array.from({length:10}, ()=>0);
+      perInputAggs.forEach(a => {
+        for (let d=0; d<10; d++) avg[d] += (a.per && a.per[d]) ? a.per[d] : 0;
+      });
+      for (let d=0; d<10; d++) avg[d] = avg[d] / perInputAggs.length;
+      const total = avg.reduce((a,b)=>a+b,0) || 1;
+      const percentages = avg.map(v => v/total*100);
+      window._numAnalyzerState.lastAverageAgg = { per: avg, percentages };
+      const avgCard = document.createElement('div'); avgCard.className='card';
+      avgCard.innerHTML = `<div style="font-weight:700;margin-bottom:8px">Average across ${perInputAggs.length} inputs</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Digit</th><th>Avg value</th><th>%</th></tr></thead><tbody>
+        ${Array.from({length:10}, (_,d)=>`<tr><td class="monospace">${d}</td><td class="monospace">${Number(avg[d]||0).toFixed(6)}</td><td class="monospace">${Number(percentages[d]||0).toFixed(3)}%</td></tr>`).join('')}
+        </tbody></table></div>`;
+      results.insertBefore(avgCard, results.firstChild);
+
+      const avgPieCard = document.createElement('div'); avgPieCard.className='card';
+      avgPieCard.innerHTML = `<div style="font-weight:700;margin-bottom:8px">Average final pie</div><div class="chart-wrap"><canvas class="avg-final-pie"></canvas></div>`;
+      results.insertBefore(avgPieCard, results.children[1] || null);
+      const avgCanvas = avgPieCard.querySelector('canvas.avg-final-pie'); avgCanvas.width=360; avgCanvas.height=360;
+      makePie(avgCanvas, percentages);
+      downloadBtn.style.display = '';
+    } else {
+      downloadBtn.style.display = 'none';
+    }
+
+    if (results.children.length) results.style.display = '';
+  }
+
+  analyzeBtn.addEventListener('click', clearAllAndAnalyze);
+
+  // Enter in inputs triggers analyze
+  inputsWrap.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); clearAllAndAnalyze(); }
+  });
+
+}); // DOMContentLoaded end
+</script>
+
+<!-- ===========================
+     SCRIPT BLOCK 2 — Output / PDF generation
+     (uses global state produced by block 1)
+     =========================== -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  // safe accessors to state set in block 1
+  function getState(){ return window._numAnalyzerState || { lastAnalysisResults: [], lastAverageAgg: null, colors: [] }; }
+  const COLORS = (getState().colors && getState().colors.length) ? getState().colors : ['#1b1f3b','#2d70ff','#00a896','#9b5de5','#ff7eb6','#ffb703','#8ac926','#ef476f','#ffd166','#6a4c93'];
+
+  // Reuse makePie from the other block if present, otherwise provide a minimal fallback
+  const makePie = window._numAnalyzerMakePie || function(canvas, numericArray){
+    // minimal fallback draws nothing
+    return null;
+  };
+
+  function escapeHtml(str){ return String(str).replace(/[&<>"']/g, (m)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  // Create an off-screen A4 page rendering for one dataset and return dataURL PNG
+  async function renderPageToDataUrl(titleText, aggObj){
+    const pxWidth = 794; // approx A4 width at 96dpi
+    const pageEl = document.createElement('div');
+    pageEl.style.width = pxWidth + 'px';
+    pageEl.style.minHeight = '1123px';
+    pageEl.style.boxSizing = 'border-box';
+    pageEl.style.padding = '28px';
+    pageEl.style.background = '#ffffff';
+    pageEl.style.color = '#0b0b0b';
+    pageEl.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace";
+    pageEl.innerHTML = `
+      <div style="text-align:center;margin-bottom:12px">
+        <div style="font-weight:700;font-size:18px">Numerology Influence — ${escapeHtml(titleText)}</div>
+        <div style="color:#6b7280;font-size:12px;margin-top:6px">Final distribution</div>
+      </div>
+      <div style="display:flex;gap:18px;align-items:flex-start;justify-content:center">
+        <div style="width:52%;min-width:260px;">
+          ${(() => {
+            const per = aggObj.per || Array(10).fill(0);
+            const perc = aggObj.percentages || Array(10).fill(0);
+            let html = '<table style="width:100%;border-collapse:collapse;font-family:inherit;font-size:12px"><thead><tr><th style="text-align:left;padding:8px 6px;color:#6b7280">Digit</th><th style="padding:8px 6px;text-align:right">Value</th><th style="padding:8px 6px;text-align:right">%</th></tr></thead><tbody>';
+            for (let d=0; d<10; d++){
+              html += `<tr><td style="padding:6px;border-top:1px solid #f2f4f6">${d}</td><td style="padding:6px;border-top:1px solid #f2f4f6;text-align:right">${Number(per[d]||0).toFixed(6)}</td><td style="padding:6px;border-top:1px solid #f2f4f6;text-align:right">${Number(perc[d]||0).toFixed(3)}%</td></tr>`;
+            }
+            html += '</tbody></table>';
+            return html;
+          })()}
+        </div>
+       <div style="width:40%;min-width:200px;max-width:260px;">
+  <div style="width:100%;height:260px;display:flex;align-items:center;justify-content:center">
+    <canvas id="pdfCanvas" width="260" height="260"></canvas>
+  </div>
+</div>
+      </div>
+      <div style="position:relative;margin-top:18px;color:#9ca3af;font-size:11px;text-align:center">Generated by Numerology Influence Analyzer</div>
+    `;
+    pageEl.style.position = 'fixed';
+    pageEl.style.left = '-9999px';
+    pageEl.style.top = '-9999px';
+    document.body.appendChild(pageEl);
+
+    const canvas = pageEl.querySelector('#pdfCanvas');
+    // draw pie into canvas
+    makePie(canvas, aggObj.percentages || aggObj.per || Array(10).fill(0));
+
+    await new Promise(r => setTimeout(r, 120)); // let chart render
+    const snapshot = await html2canvas(pageEl, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    if (pageEl.parentNode) pageEl.parentNode.removeChild(pageEl);
+    return snapshot.toDataURL('image/png');
+  }
+
+  downloadBtn.addEventListener('click', async () => {
+    const state = getState();
+    const items = state.lastAnalysisResults || [];
+    const avg = state.lastAverageAgg || null;
+    if (!items.length || !avg) return alert('Run Analyze first.');
+
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = 'Generating...';
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = pdf.internal.pageSize.getHeight();
+
+      for (let i = 0; i < items.length; i++){
+        const it = items[i];
+        const title = `Input ${i+1}: ${it.raw || ''}`;
+        const dataUrl = await renderPageToDataUrl(title, it.agg);
+        pdf.addImage(dataUrl, 'PNG', 0, 0, pdfW, pdfH);
+        if (i < items.length - 1) pdf.addPage();
+      }
+
+      // last page average
+      pdf.addPage();
+      const avgImg = await renderPageToDataUrl('Average across inputs', avg);
+      pdf.addImage(avgImg, 'PNG', 0, 0, pdfW, pdfH);
+
+      pdf.save('numerology_report.pdf');
+
+    } catch (err) {
+      alert('PDF generation failed: ' + (err && err.message ? err.message : String(err)));
+    } finally {
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = 'Download PDF';
+    }
+  });
+
+}); // DOMContentLoaded
+</script>
+</body>
+</html>
